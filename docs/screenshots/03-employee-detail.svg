@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <rect width="1200" height="760" fill="#f4f6fa"/>
+  <rect width="250" height="760" fill="#eef1f7"/>
+  <text x="25" y="55" font-family="Arial" font-size="15" fill="#556070">Records</text><text x="25" y="92" font-family="Arial" font-size="34" fill="#172033">20</text>
+  <text x="290" y="64" font-family="Arial" font-size="30" font-weight="700" fill="#172033">Employee: E001</text>
+  <g font-family="Arial" fill="#172033"><text x="290" y="120" font-size="14" fill="#697586">Attrition probability</text><text x="290" y="160" font-size="34">80.0%</text><text x="540" y="120" font-size="14" fill="#697586">Risk level</text><text x="540" y="160" font-size="34">High</text><text x="790" y="120" font-size="14" fill="#697586">Historical outcome</text><text x="790" y="160" font-size="34">Yes</text></g>
+  <text x="290" y="230" font-family="Arial" font-size="23" font-weight="700" fill="#172033">Employee profile</text>
+  <rect x="290" y="252" width="430" height="300" rx="9" fill="#ffffff" stroke="#d7dce5"/>
+  <g font-family="Arial" font-size="15" fill="#172033"><text x="315" y="292" fill="#697586">EmployeeID</text><text x="500" y="292">E001</text><text x="315" y="338" fill="#697586">EmployeeName</text><text x="500" y="338">Aisha Khan</text><text x="315" y="384" fill="#697586">Department</text><text x="500" y="384">Sales</text><text x="315" y="430" fill="#697586">Overtime</text><text x="500" y="430">Yes</text><text x="315" y="476" fill="#697586">JobSatisfaction</text><text x="500" y="476">1</text></g>
+  <text x="770" y="230" font-family="Arial" font-size="23" font-weight="700" fill="#172033">Retention / attrition strategy</text>
+  <rect x="770" y="252" width="370" height="120" rx="9" fill="#ffffff" stroke="#d7dce5"/>
+  <text x="795" y="290" font-family="Arial" font-size="15" fill="#697586">Strategy source</text><text x="795" y="330" font-family="Arial" font-size="15" fill="#172033">● HR document     ○ Web search</text>
+  <rect x="795" y="350" width="175" height="38" rx="7" fill="#ff4b4b"/><text x="820" y="375" font-family="Arial" font-size="14" fill="#ffffff">Generate strategy</text>
+  <text x="290" y="620" font-family="Arial" font-size="23" font-weight="700" fill="#172033">SHAP-style feature contributions</text>
+  <rect x="290" y="644" width="850" height="66" rx="9" fill="#ffffff" stroke="#d7dce5"/><text x="320" y="684" font-family="Arial" font-size="15" fill="#374151">Overtime: 0.42   |   JobSatisfaction: 0.31   |   YearsAtCompany: 0.18</text>
+</svg>

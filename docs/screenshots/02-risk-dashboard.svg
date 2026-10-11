@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <rect width="1200" height="760" fill="#f4f6fa"/>
+  <rect width="260" height="760" fill="#eef1f7"/>
+  <text x="28" y="52" font-family="Arial" font-size="15" fill="#556070">Model ID</text>
+  <text x="28" y="78" font-family="Arial" font-size="16" font-weight="700" fill="#172033">attrition-20261011060551</text>
+  <rect x="22" y="112" width="216" height="54" rx="7" fill="#d9f4e5"/>
+  <text x="38" y="145" font-family="Arial" font-size="14" fill="#177245">Model READY</text>
+  <text x="300" y="68" font-family="Arial" font-size="36" font-weight="700" fill="#172033">Employee Attrition Intelligence</text>
+  <rect x="300" y="112" width="860" height="112" rx="10" fill="#ffffff" stroke="#d7dce5"/>
+  <text x="330" y="148" font-family="Arial" font-size="14" fill="#697586">DATASET PREVIEW</text>
+  <text x="330" y="188" font-family="Arial" font-size="16" fill="#172033">20 records  |  35 columns  |  Identifier: EmployeeID  |  Target: Attrition</text>
+  <text x="300" y="278" font-family="Arial" font-size="24" font-weight="700" fill="#172033">Model metrics</text>
+  <g font-family="Arial" fill="#172033">
+    <text x="300" y="330" font-size="14" fill="#697586">Accuracy</text><text x="300" y="368" font-size="32">87.0%</text>
+    <text x="480" y="330" font-size="14" fill="#697586">Precision</text><text x="480" y="368" font-size="32">71.8%</text>
+    <text x="660" y="330" font-size="14" fill="#697586">Recall</text><text x="660" y="368" font-size="32">89.0%</text>
+    <text x="840" y="330" font-size="14" fill="#697586">F1</text><text x="840" y="368" font-size="32">79.5%</text>
+    <text x="1000" y="330" font-size="14" fill="#697586">ROC AUC</text><text x="1000" y="368" font-size="32">94.3%</text>
+  </g>
+  <text x="300" y="442" font-family="Arial" font-size="24" font-weight="700" fill="#172033">Employee risk ranking</text>
+  <rect x="300" y="468" width="860" height="220" rx="10" fill="#ffffff" stroke="#d7dce5"/>
+  <g font-family="Arial" font-size="15" fill="#172033"><text x="330" y="510">Employee ID</text><text x="540" y="510">Department</text><text x="790" y="510">Probability</text><text x="1000" y="510">Risk</text><text x="330" y="558">E001</text><text x="540" y="558">Sales</text><text x="790" y="558">80.0%</text><text x="1000" y="558" fill="#c0392b">High</text><text x="330" y="604">E003</text><text x="540" y="604">Human Resources</text><text x="790" y="604">76.2%</text><text x="1000" y="604" fill="#c0392b">High</text><text x="330" y="650">E005</text><text x="540" y="650">Research &amp; Development</text><text x="790" y="650">63.1%</text><text x="1000" y="650" fill="#b7791f">High</text></g>
+</svg>

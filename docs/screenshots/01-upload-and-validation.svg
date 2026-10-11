@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <rect width="1200" height="700" fill="#f4f6fa"/>
+  <rect x="0" y="0" width="280" height="700" fill="#eef1f7"/>
+  <text x="28" y="54" font-family="Arial" font-size="24" font-weight="700" fill="#1f2937">Employee Attrition</text>
+  <text x="28" y="100" font-family="Arial" font-size="14" fill="#556070">Upload employee data</text>
+  <rect x="24" y="120" width="232" height="90" rx="8" fill="#ffffff" stroke="#d7dce5"/>
+  <text x="44" y="156" font-family="Arial" font-size="16" fill="#1f2937">Upload CSV or Excel</text>
+  <text x="44" y="184" font-family="Arial" font-size="13" fill="#697586">CSV, XLSX, XLS</text>
+  <text x="28" y="258" font-family="Arial" font-size="14" fill="#556070">Upload HR policy documents</text>
+  <rect x="24" y="278" width="232" height="90" rx="8" fill="#ffffff" stroke="#d7dce5"/>
+  <text x="44" y="315" font-family="Arial" font-size="16" fill="#1f2937">Upload documents</text>
+  <text x="44" y="343" font-family="Arial" font-size="13" fill="#697586">TXT, PDF, DOCX, DOC</text>
+  <text x="330" y="76" font-family="Arial" font-size="36" font-weight="700" fill="#172033">Employee Attrition Intelligence</text>
+  <text x="330" y="112" font-family="Arial" font-size="16" fill="#697586">Train a local model, identify workforce risk, and review employees requiring attention.</text>
+  <rect x="330" y="158" width="820" height="170" rx="10" fill="#ffffff" stroke="#d7dce5"/>
+  <text x="360" y="205" font-family="Arial" font-size="22" font-weight="700" fill="#172033">Upload a dataset to begin</text>
+  <text x="360" y="246" font-family="Arial" font-size="16" fill="#697586">The dataset must contain an employee identifier and an attrition target.</text>
+  <rect x="360" y="270" width="230" height="34" rx="6" fill="#e9edf5"/>
+  <text x="382" y="293" font-family="Arial" font-size="14" fill="#374151">Choose employee data</text>
+</svg>
