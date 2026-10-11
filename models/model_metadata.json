@@ -1,0 +1,55 @@
+{
+  "model_id": "attrition-20261011060551",
+  "model_type": "stacked_ensemble",
+  "employee_column": "EmployeeID",
+  "attrition_column": "Attrition",
+  "rows": 1000,
+  "features": {
+    "numerical_features": [
+      "Age",
+      "JobLevel",
+      "MonthlyIncome",
+      "HourlyRate",
+      "YearsAtCompany",
+      "YearsInCurrentRole",
+      "YearsSinceLastPromotion",
+      "YearsWithCurrentManager",
+      "TotalWorkingYears",
+      "NumCompaniesWorked",
+      "JobSatisfaction",
+      "EnvironmentSatisfaction",
+      "RelationshipSatisfaction",
+      "WorkLifeBalance",
+      "JobInvolvement",
+      "PerformanceRating",
+      "DistanceFromHome",
+      "TrainingTimesLastYear",
+      "NumProjects",
+      "StockOptionLevel",
+      "PercentSalaryHike",
+      "CareerGrowth",
+      "ManagerSupport"
+    ],
+    "categorical_features": [
+      "EmployeeName",
+      "Gender",
+      "Department",
+      "JobRole",
+      "Education",
+      "MaritalStatus",
+      "Overtime",
+      "BusinessTravel",
+      "RemoteWork",
+      "FlexibleHours"
+    ],
+    "total_features": 33
+  },
+  "metrics": {
+    "accuracy": 0.87,
+    "precision": 0.717948717948718,
+    "recall": 0.8904593639575972,
+    "f1": 0.7949526813880127,
+    "roc_auc": 0.9430686360029766
+  },
+  "ready": true
+}
