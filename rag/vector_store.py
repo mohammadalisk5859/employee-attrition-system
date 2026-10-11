@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import List
 
 import numpy as np
@@ -33,11 +34,14 @@ class VectorStore:
             return []
 
         query_vector = self._simple_embedding(query)
+        query_tokens = set(re.findall(r"[a-z0-9]+", query.lower()))
         similarities = []
         for index, document in enumerate(self.documents):
             embedding = self.embeddings[index]
             similarity = float(np.dot(query_vector, embedding) / (np.linalg.norm(query_vector) * np.linalg.norm(embedding) + 1e-8))
-            similarities.append((similarity, document))
+            document_tokens = set(re.findall(r"[a-z0-9]+", document.get("text", "").lower()))
+            overlap = len(query_tokens & document_tokens) / max(len(query_tokens), 1)
+            similarities.append((similarity + overlap, document))
 
         similarities.sort(key=lambda item: item[0], reverse=True)
         return [document for _, document in similarities[:top_k]]

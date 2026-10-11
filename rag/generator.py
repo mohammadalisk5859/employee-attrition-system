@@ -1,4 +1,5 @@
 import math
+import re
 
 
 def _number(row, names):
@@ -23,6 +24,67 @@ def _text(row, names):
             if text:
                 return text
     return None
+
+
+def _document_recommendation(employee, knowledge_documents):
+    """Combine the strongest applicable actions from all retrieved HR policy text."""
+    if not knowledge_documents:
+        return None
+
+    values = employee if isinstance(employee, dict) else employee.to_dict()
+    signals = set()
+    for value in values.values():
+        signals.update(re.findall(r"[a-z0-9]+", str(value).lower()))
+
+    targeted_signals = set(signals)
+    overtime = _text(employee, ["OverTime", "Overtime", "overtime"])
+    if overtime in {"yes", "true", "1"}:
+        targeted_signals.update({"overtime", "workload", "schedule", "balance", "flexible"})
+
+    satisfaction = _number(employee, [
+        "JobSatisfaction", "Job Satisfaction", "EnvironmentSatisfaction",
+        "Environment Satisfaction", "satisfaction",
+    ])
+    if satisfaction is not None and satisfaction <= 2:
+        targeted_signals.update({"satisfaction", "wellbeing", "morale", "check-in", "checkin"})
+
+    income = _number(employee, ["MonthlyIncome", "Monthly Income", "Salary", "Income"])
+    if income is not None and income <= 3000:
+        targeted_signals.update({"compensation", "salary", "pay", "progression", "raise"})
+
+    tenure = _number(employee, ["YearsAtCompany", "Years At Company", "Tenure", "YearsInCurrentRole"])
+    if tenure is not None and tenure <= 2:
+        targeted_signals.update({"onboarding", "mentor", "mentoring", "growth", "career", "training"})
+
+    candidates = []
+    for document in knowledge_documents:
+        sentences = re.split(r"(?<=[.!?])\s+", str(document.get("text", "")))
+        for sentence in sentences:
+            cleaned = sentence.strip(" -\n\t")
+            words = set(re.findall(r"[a-z0-9]+", cleaned.lower()))
+            if len(words) >= 4:
+                specific_overlap = len(words & targeted_signals)
+                generic_overlap = len(words & {"support", "retention", "employee", "hr"})
+                if specific_overlap:
+                    candidates.append((specific_overlap * 3 + generic_overlap, cleaned))
+
+    if not candidates:
+        return None
+
+    ranked_sentences = []
+    seen_sentences = set()
+    for score, sentence in sorted(candidates, key=lambda item: item[0], reverse=True):
+        normalized = sentence.lower()
+        if normalized not in seen_sentences:
+            ranked_sentences.append(sentence)
+            seen_sentences.add(normalized)
+        if len(ranked_sentences) == 3:
+            break
+
+    guidance = " | ".join(ranked_sentences)
+    if len(guidance) > 480:
+        guidance = guidance[:477].rsplit(" ", 1)[0] + "..."
+    return "Apply the organization HR guidance: " + guidance
 
 
 def summarize_recommendation_context(employee, probability, knowledge_documents=None, risk_factors=None):
@@ -90,10 +152,7 @@ def generate_retention_recommendations(employee, probability, knowledge_document
             "Assign a mentor and schedule a stay interview focused on onboarding, growth, and role clarity."
         )
 
-    if knowledge_documents:
-        recommendations.append(
-            "Use the retrieved HR guidance to support coaching and retention planning for this employee."
-        )
+    document_recommendation = _document_recommendation(employee, knowledge_documents)
 
     if not recommendations:
         recommendations.append(
@@ -110,6 +169,9 @@ def generate_retention_recommendations(employee, probability, knowledge_document
             0,
             "Schedule a manager check-in within 30 days and monitor the risk after the intervention.",
         )
+
+    if document_recommendation:
+        recommendations.insert(1 if probability >= 0.30 else 0, document_recommendation)
 
     if risk_factors:
         recommendations.append(

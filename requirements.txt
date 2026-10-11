@@ -4,11 +4,8 @@ scikit-learn
 xgboost
 imbalanced-learn
 optuna
-shap
-lime
 openpyxl
 joblib
-matplotlib
 streamlit
 pypdf
 python-docx

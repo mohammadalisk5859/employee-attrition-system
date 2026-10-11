@@ -1,0 +1,20 @@
+name: employee-attrition
+channels:
+  - snowflake
+  - nodefaults
+dependencies:
+  - python=3.11
+  - pandas
+  - numpy
+  - scikit-learn
+  - xgboost
+  - imbalanced-learn
+  - optuna
+  - shap
+  - lime
+  - openpyxl
+  - joblib
+  - matplotlib
+  - streamlit
+  - pypdf
+  - python-docx

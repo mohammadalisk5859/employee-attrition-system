@@ -39,19 +39,27 @@ def explain_with_shap(model, X: pd.DataFrame, row: pd.Series, preprocessor=None)
         except Exception:
             feature_names = [f"feature_{idx}" for idx in range(transformed_X.shape[1])]
 
+    explanation_model = model
+    if hasattr(model, "named_estimators_"):
+        explanation_model = next(iter(model.named_estimators_.values()))
+
     try:
-        explainer = shap.TreeExplainer(model)
+        explainer = shap.TreeExplainer(explanation_model)
         shap_values = explainer.shap_values(transformed_X)
         row_values = explainer.shap_values(transformed_row)
     except (TypeError, ValueError, AttributeError):
         if hasattr(model, "predict_proba"):
             if preprocessor is not None:
-                predict_fn = lambda values: model.predict_proba(preprocessor.transform(values))[:, 1]
+                predict_fn = lambda values: model.predict_proba(values)[:, 1]
+                background = np.asarray(transformed_X, dtype=float)
+                explain_row = np.asarray(transformed_row, dtype=float)
             else:
                 predict_fn = lambda values: model.predict_proba(values)[:, 1]
-            explainer = shap.Explainer(predict_fn, X)
-            shap_values = explainer(X)
-            row_values = explainer(row.to_frame().T)
+                background = X
+                explain_row = row.to_frame().T
+            explainer = shap.Explainer(predict_fn, background)
+            shap_values = explainer(background)
+            row_values = explainer(explain_row)
         else:
             raise
 
