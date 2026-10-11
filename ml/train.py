@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime, timezone
 
 import joblib
@@ -40,7 +41,12 @@ def train_model(df, model_type="stacked_ensemble"):
     X_train_transformed = preprocessor.fit_transform(X_train)
     X_test_transformed = preprocessor.transform(X_test)
 
-    optimized_models = optimize_models(X_train_transformed, y_train, n_trials=5)
+    optimization_trials = 1 if os.getenv("RENDER_MODE") == "true" else 5
+    optimized_models = optimize_models(
+        X_train_transformed,
+        y_train,
+        n_trials=optimization_trials,
+    )
     rf_model = optimized_models["random_forest"]["model"]
     xgb_model = optimized_models["xgboost"]["model"]
 
