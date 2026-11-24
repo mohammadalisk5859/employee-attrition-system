@@ -17,22 +17,65 @@ def find_employee_column(df):
 	"""Find the employee ID or employee name column."""
 
 	for column in EMPLOYEE_ID_COLUMNS:
-		if column in df.columns:
-			return column
+		match = _find_column(df.columns, column)
+		if match is not None:
+			return match
 
 	for column in EMPLOYEE_NAME_COLUMNS:
-		if column in df.columns:
-			return column
+		match = _find_column(df.columns, column)
+		if match is not None:
+			return match
 
 	return None
+
+
+def _normalize_column_name(column):
+	return "".join(character.lower() for character in str(column) if character.isalnum())
+
+
+def _find_column(columns, requested_name):
+	normalized_name = _normalize_column_name(requested_name)
+	return next(
+		(column for column in columns if _normalize_column_name(column) == normalized_name),
+		None,
+	)
+
+
+def is_employee_identity_column(column):
+	"""Return whether a column contains employee identity rather than job attributes."""
+	identity_names = EMPLOYEE_ID_COLUMNS + EMPLOYEE_NAME_COLUMNS
+	normalized_name = _normalize_column_name(column)
+	return normalized_name in {
+		_normalize_column_name(name)
+		for name in identity_names
+	}
+
+
+def align_features_to_model(X, expected_feature_names, numerical_features=()):
+	"""Align current features to an older model while redacting identity inputs."""
+	expected = list(expected_feature_names)
+	expected_attributes = {
+		name for name in expected if not is_employee_identity_column(name)
+	}
+	actual_attributes = set(X.columns)
+	if actual_attributes != expected_attributes:
+		raise ValueError("Employee dataset features do not match the saved model schema.")
+
+	aligned = X.copy()
+	numerical_features = set(numerical_features)
+	for name in expected:
+		if is_employee_identity_column(name) and name not in aligned.columns:
+			aligned[name] = 0 if name in numerical_features else "__redacted_identity__"
+	return aligned.reindex(columns=expected)
 
 
 def find_attrition_column(df):
 	"""Find the attrition/turnover target column."""
 
 	for column in ATTRITION_COLUMNS:
-		if column in df.columns:
-			return column
+		match = _find_column(df.columns, column)
+		if match is not None:
+			return match
 
 	return None
 
@@ -152,9 +195,10 @@ def prepare_features_and_target(df):
 
 	y = normalize_target(df[attrition_column])
 	X = df.drop(columns=[attrition_column])
-
-	if employee_column in X.columns:
-		X = X.drop(columns=[employee_column])
+	identity_columns = [
+		column for column in X.columns if is_employee_identity_column(column)
+	]
+	X = X.drop(columns=identity_columns)
 
 	return X, y, employee_column, attrition_column
 

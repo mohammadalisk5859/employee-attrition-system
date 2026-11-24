@@ -9,10 +9,17 @@ import pandas as pd
 import streamlit as st
 
 from config import MODEL_METADATA_FILE
+from explainability.lime_explainer import explain_instance
 from ml.predict import load_artifacts, predict_attrition
-from ml.preprocessing import clean_dataset, prepare_features_and_target, validate_dataset
+from ml.preprocessing import (
+    align_features_to_model,
+    clean_dataset,
+    is_employee_identity_column,
+    prepare_features_and_target,
+    validate_dataset,
+)
 from rag.document_loader import load_documents_from_files
-from rag.generator import generate_retention_recommendations
+from rag.personalization import generate_personalized_retention_plan
 from rag.vector_store import VectorStore
 
 
@@ -22,29 +29,246 @@ st.markdown(
     """
     <style>
     :root {
-        --ink: #25313d;
-        --muted: #68747c;
-        --line: #d8ddd9;
-        --paper: #f7f8f3;
-        --blue: #dcebf5;
-        --green: #1d594d;
+        --ink: #172b3a;
+        --muted: #647582;
+        --line: #dce5e7;
+        --paper: #f3f6f6;
+        --navy: #102b3f;
+        --navy-soft: #183d52;
+        --teal: #168b79;
+        --mint: #b7ead9;
+        --gold: #e6c27a;
+        --surface: #ffffff;
+        --shadow: 0 14px 36px rgba(16, 43, 63, .07);
     }
-    .stApp { background: var(--paper); color: var(--ink); }
-    [data-testid="stHeader"] { background: transparent; }
-    [data-testid="stSidebar"] { background: #eef1ec; border-right: 1px solid var(--line); }
-    .workspace-kicker { color: var(--green); font-size: .72rem; letter-spacing: .12em; font-weight: 700; }
-    .workspace-title { color: var(--ink); font-size: clamp(2.25rem, 5vw, 4.2rem); line-height: .98; letter-spacing: -.04em; margin: .5rem 0 1rem; max-width: 760px; }
-    .workspace-copy { color: var(--muted); font-size: 1.05rem; max-width: 700px; }
-    .workspace-rule { border-top: 1px solid var(--line); margin: 2.5rem 0 1.5rem; }
-    .workspace-note { background: var(--blue); border-radius: 8px; color: #31536c; padding: 1rem 1.25rem; margin-bottom: 1rem; }
-    div[data-testid="stMetric"] { background: white; border: 1px solid var(--line); padding: 1rem; min-height: 112px; }
-    div[data-testid="stMetricLabel"] p { color: var(--green); font-size: .72rem; letter-spacing: .1em; font-weight: 700; }
-    .signal-card { background: #fff0ec; border: 1px solid #f0b5a8; padding: .85rem 1rem; margin: .55rem 0; }
-    .signal-card strong { color: #c44b3c; }
-    .signal-meta, .policy-source { color: #00635d; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; margin-top: .5rem; }
-    .policy-card { background: #fbfcf9; border: 1px solid #cfd5d1; border-radius: 8px; padding: 1rem; margin: .65rem 0; }
-    .policy-card strong { color: #1f2f3e; }
-    .policy-card p { color: #29415a; margin: .7rem 0; }
+    @keyframes portal-enter {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .stApp {
+        background:
+            radial-gradient(ellipse at 82% 0%, rgba(22, 139, 121, .055), transparent 34rem),
+            var(--paper);
+        color: var(--ink);
+    }
+    [data-testid="stHeader"] { background: rgba(243, 246, 246, .88); }
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #f8faf9 0%, #edf3f2 100%);
+        border-right: 1px solid var(--line);
+    }
+    [data-testid="stSidebar"] > div:first-child { padding-top: 1.5rem; }
+    .portal-hero {
+        position: relative;
+        isolation: isolate;
+        overflow: hidden;
+        padding: clamp(2rem, 5vw, 3.6rem);
+        margin: .75rem 0 1.6rem;
+        border: 1px solid rgba(255, 255, 255, .12);
+        border-radius: 22px;
+        background: linear-gradient(122deg, var(--navy) 0%, #153b50 62%, #176253 115%);
+        box-shadow: 0 22px 48px rgba(16, 43, 63, .16);
+        animation: portal-enter .65s cubic-bezier(.2, .75, .25, 1) both;
+    }
+    .portal-hero::before, .portal-hero::after {
+        position: absolute;
+        z-index: -1;
+        content: "";
+        border: 1px solid rgba(183, 234, 217, .13);
+        border-radius: 50%;
+        pointer-events: none;
+    }
+    .portal-hero::before {
+        width: 390px;
+        height: 390px;
+        top: -225px;
+        right: -65px;
+        box-shadow: 0 0 0 34px rgba(183, 234, 217, .035), 0 0 0 70px rgba(183, 234, 217, .025);
+    }
+    .portal-hero::after {
+        width: 210px;
+        height: 210px;
+        right: 180px;
+        bottom: -180px;
+        border-color: rgba(230, 194, 122, .22);
+    }
+    .portal-hero-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    .workspace-kicker {
+        color: var(--mint);
+        font-size: .7rem;
+        letter-spacing: .16em;
+        font-weight: 750;
+        text-transform: uppercase;
+    }
+    .portal-badge {
+        padding: .48rem .75rem;
+        border: 1px solid rgba(230, 194, 122, .42);
+        border-radius: 999px;
+        color: #f1d89f;
+        background: rgba(255, 255, 255, .045);
+        font-size: .64rem;
+        letter-spacing: .12em;
+        font-weight: 700;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+    .workspace-title {
+        color: #fff;
+        font-size: clamp(2.25rem, 5vw, 4.15rem);
+        line-height: 1;
+        letter-spacing: -.045em;
+        margin: 0 0 1rem;
+        max-width: 760px;
+    }
+    .portal-hero h1.workspace-title { color: #fff !important; }
+    .workspace-copy {
+        color: rgba(238, 246, 245, .78);
+        font-size: 1.04rem;
+        line-height: 1.75;
+        max-width: 700px;
+        margin: 0;
+    }
+    .workspace-rule { border-top: 1px solid var(--line); margin: 1.7rem 0 1.5rem; }
+    .workspace-note {
+        background: linear-gradient(110deg, #e5f3ef, #eaf1f7);
+        border: 1px solid #d5e8e2;
+        border-left: 3px solid var(--teal);
+        border-radius: 10px;
+        color: #294958;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.2rem;
+    }
+    div[data-testid="stMetric"] {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 1.15rem 1.2rem;
+        min-height: 112px;
+        box-shadow: 0 5px 16px rgba(16, 43, 63, .035);
+        animation: portal-enter .55s cubic-bezier(.2, .75, .25, 1) both;
+        transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+    }
+    div[data-testid="stMetric"]:hover {
+        transform: translateY(-3px);
+        border-color: rgba(22, 139, 121, .38);
+        box-shadow: var(--shadow);
+    }
+    div[data-testid="stMetricLabel"] p {
+        color: var(--teal);
+        font-size: .68rem;
+        letter-spacing: .11em;
+        font-weight: 750;
+        text-transform: uppercase;
+    }
+    div[data-testid="stMetricValue"] { color: var(--navy); font-weight: 650; }
+    div[data-testid="stHorizontalBlock"] > div:nth-child(3) [data-testid="stMetricValue"] {
+        font-size: 1.15rem;
+    }
+    [data-testid="stSidebar"] div[data-testid="stMetric"] { min-height: 0; }
+    [data-testid="stFileUploader"] section {
+        border: 1px dashed #b9cbc9;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, .76);
+        transition: border-color .2s ease, background .2s ease;
+    }
+    [data-testid="stFileUploader"] section:hover {
+        border-color: var(--teal);
+        background: #fff;
+    }
+    div.stButton > button {
+        border-radius: 10px;
+        font-weight: 650;
+        transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+    }
+    div.stButton > button[kind="primary"] {
+        color: #fff;
+        border: 1px solid var(--navy);
+        background: linear-gradient(105deg, var(--navy), #176253);
+        box-shadow: 0 7px 17px rgba(16, 43, 63, .16);
+    }
+    div.stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 22px rgba(16, 43, 63, .15);
+    }
+    div[data-testid="stDataFrame"] {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        box-shadow: 0 5px 18px rgba(16, 43, 63, .04);
+    }
+    .signal-card {
+        background: linear-gradient(110deg, #fff5f1, #fffaf7);
+        border: 1px solid #f0d7ce;
+        border-left: 3px solid #d9775d;
+        border-radius: 10px;
+        padding: .85rem 1rem;
+        margin: .55rem 0;
+    }
+    .signal-card strong { color: #a64c3c; }
+    .signal-meta, .policy-source {
+        color: var(--teal);
+        font-size: .66rem;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+        margin-top: .5rem;
+    }
+    .policy-card {
+        background: linear-gradient(145deg, #fff 0%, #f7fbf9 100%);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 1rem;
+        margin: .65rem 0;
+        box-shadow: 0 5px 16px rgba(16, 43, 63, .035);
+        transition: transform .2s ease, box-shadow .2s ease;
+    }
+    .policy-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+    .policy-card strong { color: var(--navy); }
+    .policy-card p { color: #425968; margin: .7rem 0; line-height: 1.65; }
+    .recommendation-card {
+        background: linear-gradient(145deg, #fff 0%, #f7fbf9 100%);
+        border: 1px solid var(--line);
+        border-left: 4px solid var(--teal);
+        border-radius: 12px;
+        padding: 1rem 1.15rem;
+        margin: .8rem 0;
+        box-shadow: 0 5px 16px rgba(16, 43, 63, .04);
+    }
+    .recommendation-card.priority-high { border-left-color: #bd5548; }
+    .recommendation-card.priority-medium { border-left-color: #c28a2d; }
+    .recommendation-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: .75rem;
+        color: var(--muted);
+        font-size: .68rem;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+    }
+    .recommendation-priority { color: var(--teal); font-weight: 750; }
+    .priority-high .recommendation-priority { color: #a63e35; }
+    .priority-medium .recommendation-priority { color: #9a671b; }
+    .recommendation-card h4 { color: var(--navy); margin: .65rem 0; }
+    .recommendation-card p { color: #425968; line-height: 1.6; margin: .45rem 0; }
+    .recommendation-guidance {
+        padding-top: .55rem;
+        border-top: 1px solid var(--line);
+        font-size: .85rem;
+    }
+    h2, h3 { color: var(--navy); letter-spacing: -.025em; }
+    [data-testid="stAlert"] { border-radius: 10px; }
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            animation-duration: .01ms !important;
+            animation-iteration-count: 1 !important;
+            scroll-behavior: auto !important;
+            transition-duration: .01ms !important;
+        }
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -96,59 +320,18 @@ def sample_employee_data():
     ).assign(Attrition=["Yes", "No", "No", "Yes", "No", "No", "Yes", "No", "Yes", "No", "No", "Yes", "No", "Yes", "No", "No", "Yes", "No", "No", "Yes", "No", "Yes", "No", "No"])
 
 
-def employee_risk_signals(employee):
-    """Return the strongest visible profile signals for the employee detail view."""
-    signals = []
-    checks = [
-        ("Job satisfaction", ["JobSatisfaction", "Job Satisfaction"]),
-        ("Environment satisfaction", ["EnvironmentSatisfaction", "Environment Satisfaction"]),
-        ("Relationship satisfaction", ["RelationshipSatisfaction", "Relationship Satisfaction"]),
-        ("Work-life balance", ["WorkLifeBalance", "Work Life Balance"]),
-        ("Flexible hours", ["FlexibleHours", "Flexible Hours"]),
-        ("Overtime", ["OverTime", "Overtime"]),
-        ("Monthly income", ["MonthlyIncome", "Monthly Income"]),
-    ]
-    for label, names in checks:
-        column = next((name for name in names if name in employee.index), None)
-        if column is None:
-            continue
-        value = employee[column]
-        try:
-            numeric_value = float(value)
-            if numeric_value <= 2:
-                signals.append((label, str(value), "RISK SIGNAL"))
-        except (TypeError, ValueError):
-            if str(value).strip().lower() in {"yes", "true", "low", "rarely"}:
-                signals.append((label, str(value), "RISK SIGNAL"))
-    if not signals:
-        signals.append(("Profile indicators", "No elevated indicators", "PROTECTIVE / NEUTRAL"))
-    return signals[:5]
-
-
-def policy_cards(documents, employee):
-    """Rank uploaded HR guidance against the selected employee's actual signals."""
-    signals = set()
-    for label, value, _ in employee_risk_signals(employee):
-        signals.update(re.findall(r"[a-z0-9]+", f"{label} {value}".lower()))
-    if "overtime" in signals:
-        signals.update({"workload", "schedule", "hours", "flexible"})
-    if "satisfaction" in " ".join(signals):
-        signals.update({"listening", "conversation", "wellbeing", "support"})
-
-    candidates = []
-    seen = set()
-    for document in documents:
-        for sentence in re.split(r"(?<=[.!?])\s+", str(document.get("text", ""))):
-            sentence = sentence.strip(" -\n\t")
-            if len(sentence) < 24 or sentence.lower() in seen:
-                continue
-            seen.add(sentence.lower())
-            title = " ".join(sentence.split()[:6]).strip(".,:;")
-            words = set(re.findall(r"[a-z0-9]+", sentence.lower()))
-            score = len(words & signals)
-            candidates.append((score, title.title(), sentence, document.get("source_name", "HR policy")))
-    candidates.sort(key=lambda item: item[0], reverse=True)
-    return [(title, sentence, source) for _, title, sentence, source in candidates[:3]]
+def employee_value(employee, aliases):
+    """Return a display-safe value for the first available dataset column."""
+    normalized_aliases = {
+        re.sub(r"[^a-z0-9]+", "", alias.lower())
+        for alias in aliases
+    }
+    for column in employee.index:
+        normalized_column = re.sub(r"[^a-z0-9]+", "", str(column).lower())
+        if normalized_column in normalized_aliases:
+            value = employee[column]
+            return "Not available" if pd.isna(value) else str(value)
+    return "Not available"
 
 
 @st.cache_data
@@ -184,13 +367,17 @@ def fetch_web_strategy(query: str, max_chars: int = 800):
     }
 
 
-st.markdown('<div class="workspace-kicker">HR DECISION SUPPORT / WORKSPACE 01</div>', unsafe_allow_html=True)
-st.markdown('<h1 class="workspace-title">See the signal<br>behind attrition.</h1>', unsafe_allow_html=True)
 st.markdown(
-    '<p class="workspace-copy">Turn employee data into a clearer conversation about who may need support, why, and what HR could consider next.</p>',
+    '<section class="portal-hero">'
+    '<div class="portal-hero-top">'
+    '<div class="workspace-kicker">People analytics / Workforce intelligence</div>'
+    '<div class="portal-badge">Employee insights</div>'
+    '</div>'
+    '<h1 class="workspace-title">See the signal<br>behind attrition.</h1>'
+    '<p class="workspace-copy">Turn employee data into a clearer conversation about who may need support, why, and what HR could consider next.</p>'
+    '</section>',
     unsafe_allow_html=True,
 )
-st.markdown('<div class="workspace-rule"></div>', unsafe_allow_html=True)
 
 model_id = "unknown"
 if MODEL_METADATA_FILE.exists():
@@ -258,10 +445,14 @@ if MODEL_METADATA_FILE.exists():
             persisted_features.get("numerical_features", [])
             + persisted_features.get("categorical_features", [])
         )
+        persisted_attributes = {
+            name for name in persisted_feature_names
+            if not is_employee_identity_column(name)
+        }
         compatible_schema = (
             metadata.get("employee_column") == employee_column
             and metadata.get("attrition_column") == attrition_column
-            and set(persisted_feature_names) == set(features.columns)
+            and persisted_attributes == set(features.columns)
         )
         if metadata.get("ready") and compatible_schema:
             model, preprocessor, persisted_metadata = load_artifacts()
@@ -291,13 +482,38 @@ if training_result is None:
     st.warning("Train the model from the sidebar to generate employee risk scores.")
     st.stop()
 
+model_metadata = training_result["metadata"]
+if (
+    model_metadata.get("employee_column") != employee_column
+    or model_metadata.get("attrition_column") != attrition_column
+):
+    st.error("The loaded model was trained for a different employee schema. Refresh the model before analyzing.")
+    st.stop()
+
+persisted_features = model_metadata.get("features", {})
+model_feature_names = (
+    persisted_features.get("numerical_features", [])
+    + persisted_features.get("categorical_features", [])
+)
+if not model_feature_names:
+    model_feature_names = list(features.columns)
+try:
+    model_features = align_features_to_model(
+        features,
+        model_feature_names,
+        numerical_features=persisted_features.get("numerical_features", []),
+    )
+except ValueError as error:
+    st.error(f"The loaded model cannot analyze this dataset: {error}")
+    st.stop()
+
 metrics = training_result["metadata"]["metrics"]
 metric_columns = st.columns(5)
 for column, (name, value) in zip(metric_columns, metrics.items()):
     column.metric(name.replace("_", " ").title(), f"{value:.1%}")
 
 predictions = predict_attrition(
-    features,
+    model_features,
     model=training_result["model"],
     preprocessor=training_result["preprocessor"],
 )
@@ -338,105 +554,174 @@ if search_term.strip():
             matching_employees[employee_column].astype(str) == selected_employee
         ].index[0]
         employee_result = results.loc[selected_index]
+        employee_record = dataset.loc[selected_index].drop(labels=[attrition_column])
         employee_probability = float(employee_result["attrition_probability"])
 
-        st.markdown(f"### Employee: {selected_employee}")
-        metric_columns = st.columns(3)
-        metric_columns[0].metric("Attrition probability", f"{employee_probability:.1%}")
-        metric_columns[1].metric("Risk level", employee_result["risk_level"])
-        metric_columns[2].metric(
+        st.markdown(f"### Employee: {html.escape(str(selected_employee))}")
+        st.markdown("#### Employee profile")
+        identifier_label = (
+            "Employee name"
+            if "name" in re.sub(r"[^a-z0-9]+", "", str(employee_column).lower())
+            else "Employee ID"
+        )
+        profile_fields = [
+            (identifier_label, [employee_column]),
+            ("Department", ["Department"]),
+            ("Job role", ["JobRole", "Job Role"]),
+            ("Performance rating", ["PerformanceRating", "Performance Rating", "Performance"]),
+            ("Job satisfaction", ["JobSatisfaction", "Job Satisfaction"]),
+        ]
+        profile_metrics = st.columns(len(profile_fields))
+        for column, (label, aliases) in zip(profile_metrics, profile_fields):
+            column.metric(label, employee_value(employee_record, aliases))
+
+        st.markdown("#### Attrition analysis")
+        analysis_metrics = st.columns(3)
+        analysis_metrics[0].metric("Predicted attrition probability", f"{employee_probability:.1%}")
+        analysis_metrics[1].metric("Risk category", employee_result["risk_level"])
+        analysis_metrics[2].metric(
             "Historical outcome",
-            str(dataset.loc[selected_index, attrition_column]),
+            employee_value(dataset.loc[selected_index], [attrition_column]),
         )
 
-        signal_column, support_column = st.columns([1, 1])
-        with signal_column:
-            st.markdown("#### Why this signal?")
-            for label, value, signal_type in employee_risk_signals(employee_result):
-                st.markdown(
-                    f'<div class="signal-card"><strong>{html.escape(label)}: {html.escape(value)}</strong>'
-                    f'<div class="signal-meta">{html.escape(signal_type)} · LOCAL PROFILE SIGNAL</div></div>',
-                    unsafe_allow_html=True,
-                )
-
-        with support_column:
-            st.markdown("#### Possible retention support")
-            support_cards = policy_cards(knowledge_store.documents, employee_result)
-            if not support_cards:
-                support_cards = [
-                    ("Personalized retention conversation", recommendation, "LOCAL STRATEGY")
-                    for recommendation in generate_retention_recommendations(
-                        employee_result,
-                        employee_probability,
-                        risk_factors=[],
-                    )[:3]
-                ]
-            for title, description, source in support_cards:
-                st.markdown(
-                    f'<div class="policy-card"><strong>{html.escape(title)}</strong>'
-                    f'<p>{html.escape(description)}</p>'
-                    f'<div class="policy-source">SOURCE: {html.escape(str(source))}</div></div>',
-                    unsafe_allow_html=True,
-                )
-
-        profile_column, action_column = st.columns([1, 1])
-        with profile_column:
-            st.markdown("#### Employee profile")
-            profile = employee_result.drop(
-                labels=["attrition_probability", "risk_level"]
-            ).to_frame("Value")
-            st.dataframe(profile, use_container_width=True)
-
-        with action_column:
-            st.markdown("#### Retention / attrition strategy")
-            strategy_source = st.radio(
-                "Strategy source",
-                ["HR document", "Web search"],
-                horizontal=True,
-                key=f"strategy_source_{selected_employee}",
+        try:
+            local_explanation = explain_instance(
+                lambda rows: predict_attrition(
+                    rows,
+                    model=training_result["model"],
+                    preprocessor=training_result["preprocessor"],
+                )["probability"],
+                model_features,
+                model_features.loc[selected_index],
+                top_features=8,
+            )
+        except Exception as error:
+            local_explanation = {"top_features": []}
+            st.warning(
+                "Local LIME sensitivity could not be calculated for this record. "
+                f"Profile-based recommendations remain available. Details: {error}"
             )
 
-            recommended_docs = knowledge_store.documents if knowledge_store.documents else []
-            risk_factors = []
-            if str(employee_result.get("OverTime", "")).strip().lower() in {"yes", "true", "1"}:
-                risk_factors.append("OverTime")
-            try:
-                if float(employee_result.get("JobSatisfaction", 99)) <= 2:
-                    risk_factors.append("JobSatisfaction")
-            except (TypeError, ValueError):
-                pass
-            try:
-                if float(employee_result.get("Years At Company", 99)) <= 2:
-                    risk_factors.append("Years At Company")
-            except (TypeError, ValueError):
-                pass
-            if not risk_factors:
-                risk_factors.append("overall risk level")
+        plan = generate_personalized_retention_plan(
+            employee_record,
+            dataset,
+            employee_probability,
+            local_explanation=local_explanation,
+            knowledge_documents=knowledge_store.documents,
+        )
 
-            if st.button("Generate strategy", key=f"generate_strategy_{selected_employee}", type="primary"):
-                if strategy_source == "HR document":
-                    st.caption("Top HR document strategies")
-                    recommendations = generate_retention_recommendations(
-                        employee_result,
-                        employee_probability,
-                        knowledge_documents=recommended_docs,
-                        risk_factors=risk_factors,
-                    )[:3]
-                    for recommendation in recommendations:
-                        st.write(f"- {recommendation}")
-                else:
-                    query = (
-                        f"employee retention strategy attrition reduction for {selected_employee} "
-                        f"risk={employee_result['risk_level']} "
-                        f"overtime={employee_result.get('OverTime', '')} "
-                        f"job satisfaction={employee_result.get('JobSatisfaction', '')}"
+        st.markdown("#### Potential reasons behind this risk estimate")
+        st.caption(
+            "These are observed profile signals that may warrant a conversation, alongside model sensitivity. "
+            "They are not confirmed reasons the employee may leave or proof of cause."
+        )
+        if plan["signals"]:
+            for signal in plan["signals"][:5]:
+                reason = signal["reason"]
+                if signal.get("model_feature"):
+                    reason += (
+                        f" The model also ranked {signal['model_feature']} as influential "
+                        f"for this record (local sensitivity {signal['model_sensitivity']:.3f})."
                     )
-                    web_result = fetch_web_strategy(query)
-                    st.caption("Live web strategy summary")
-                    st.info(web_result["summary"])
-                    if web_result["source"] != "offline":
-                        search_url = "https://duckduckgo.com/?q=" + quote(query)
-                        st.link_button("Open full web search", search_url, use_container_width=True)
+                st.markdown(
+                    f"- **{html.escape(signal['label'])}:** {html.escape(reason)}"
+                )
+        else:
+            st.info(
+                plan["insufficient_information"]
+                or "No specific employee-profile signals were found; HR should ask the employee what support would help."
+            )
+
+        drivers_column, record_column = st.columns([1, 1])
+        with drivers_column:
+            st.markdown("#### How the model responds to these features")
+            st.caption(
+                "A LIME-style local surrogate estimates associations near this record. "
+                "Numeric direction describes how higher values relate to predicted risk locally. "
+                "Category direction averages sampled alternatives to the recorded category."
+            )
+            effects_by_feature = {
+                effect["feature"]: effect
+                for effect in local_explanation.get("feature_effects", [])
+            }
+            displayed_drivers = 0
+            for feature, sensitivity in local_explanation.get("top_features", []):
+                if is_employee_identity_column(feature):
+                    continue
+                feature_value = employee_value(employee_record, [feature])
+                effect = effects_by_feature.get(feature)
+                direction = "Direction unavailable."
+                if effect and effect["kind"] == "numeric":
+                    direction = (
+                        "Higher values are associated with higher predicted risk locally."
+                        if effect["coefficient"] > 0
+                        else "Higher values are associated with lower predicted risk locally."
+                    )
+                elif effect:
+                    direction = (
+                        "Changing from the recorded category tends to increase predicted risk locally."
+                        if effect["coefficient"] > 0
+                        else "Changing from the recorded category tends to decrease predicted risk locally."
+                    )
+                st.markdown(
+                    f"**{html.escape(str(feature))}:** {html.escape(feature_value)}  \n"
+                    f"{direction} Local sensitivity magnitude: {float(sensitivity):.3f}.",
+                    unsafe_allow_html=True,
+                )
+                displayed_drivers += 1
+            if not displayed_drivers:
+                st.info("No reliable local feature sensitivity was available for display.")
+
+        with record_column:
+            st.markdown("#### Complete employee record")
+            st.dataframe(
+                employee_record.astype(str).to_frame("Value"),
+                use_container_width=True,
+            )
+
+        st.markdown("#### Personalized retention strategies")
+        st.caption(
+            "Recommendations use observed profile values and local model sensitivity. "
+            "HR review is required; these are not employment decisions."
+        )
+        if plan["insufficient_information"]:
+            st.info(plan["insufficient_information"])
+        else:
+            for recommendation in plan["recommendations"]:
+                priority_class = recommendation["priority"].lower()
+                card = (
+                    f'<article class="recommendation-card priority-{priority_class}">'
+                    '<div class="recommendation-meta">'
+                    f'<span class="recommendation-priority">{html.escape(recommendation["priority"])} priority</span>'
+                    f'<span>Follow up: {html.escape(recommendation["timeline"])}</span>'
+                    '</div>'
+                    f'<h4>{html.escape(recommendation["strategy_title"])}</h4>'
+                    f'<p><strong>Why this applies:</strong> {html.escape(recommendation["reason"])}</p>'
+                    f'<p><strong>Recommended action:</strong> {html.escape(recommendation["action"])}</p>'
+                )
+                if recommendation["policy_guidance"]:
+                    card += (
+                        '<p class="recommendation-guidance"><strong>Related uploaded HR guidance:</strong> '
+                        f'{html.escape(recommendation["policy_guidance"])}'
+                        f' <em>Source: {html.escape(str(recommendation["policy_source"]))}</em></p>'
+                    )
+                card += "</article>"
+                st.markdown(card, unsafe_allow_html=True)
+
+        with st.expander("Optional general web context"):
+            st.caption(
+                "This search is general and does not include employee identifiers or profile data."
+            )
+            if st.button(
+                "Look up general retention guidance",
+                key=f"general_web_strategy_{selected_employee}",
+            ):
+                query = "evidence-based employee retention strategies"
+                web_result = fetch_web_strategy(query)
+                st.info(web_result["summary"])
+                if web_result["source"] != "offline":
+                    search_url = "https://duckduckgo.com/?q=" + quote(query)
+                    st.link_button("Open full web search", search_url, use_container_width=True)
 
 st.subheader("Employee risk ranking")
 st.dataframe(

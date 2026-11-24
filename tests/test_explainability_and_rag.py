@@ -16,12 +16,18 @@ def test_lime_explainer_returns_features():
             "OverTime": ["Yes", "No", "No", "No"],
         }
     )
-    model = lambda values: [0.05, 0.2, 0.8, 0.7]
+    model = lambda values: values["MonthlyIncome"].to_numpy() / 10000
 
     explanation = explain_instance(model, data, data.iloc[0], top_features=3)
 
     assert explanation["top_features"]
     assert all(len(item) == 2 for item in explanation["top_features"])
+    assert len({name for name, _ in explanation["top_features"]}) == len(explanation["top_features"])
+    income_effect = next(
+        effect for effect in explanation["feature_effects"]
+        if effect["feature"] == "MonthlyIncome"
+    )
+    assert income_effect["direction"] == "higher_values_increase_risk"
 
 
 def test_document_loader_reads_text_file(tmp_path):

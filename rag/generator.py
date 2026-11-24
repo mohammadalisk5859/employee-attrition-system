@@ -1,6 +1,10 @@
 import math
 import re
 
+import pandas as pd
+
+from rag.personalization import generate_personalized_retention_plan
+
 
 def _number(row, names):
     keys = row.keys() if isinstance(row, dict) else getattr(row, "index", [])
@@ -26,62 +30,169 @@ def _text(row, names):
     return None
 
 
-def _document_recommendation(employee, knowledge_documents):
-    """Combine the strongest applicable actions from all retrieved HR policy text."""
-    if not knowledge_documents:
-        return None
-
-    values = employee if isinstance(employee, dict) else employee.to_dict()
-    signals = set()
-    for value in values.values():
-        signals.update(re.findall(r"[a-z0-9]+", str(value).lower()))
-
-    targeted_signals = set(signals)
+def _active_policy_topics(employee):
+    """Return policy topics supported by explicit employee profile indicators."""
+    topics = []
     overtime = _text(employee, ["OverTime", "Overtime", "overtime"])
-    if overtime in {"yes", "true", "1"}:
-        targeted_signals.update({"overtime", "workload", "schedule", "balance", "flexible"})
+    work_life_balance = _number(employee, ["WorkLifeBalance", "Work Life Balance"])
+    if overtime in {"yes", "true", "1"} or (
+        work_life_balance is not None and work_life_balance <= 2
+    ):
+        topics.append({
+            "title": "Workload and work-life balance",
+            "terms": (
+                "overtime", "workload", "overwork", "schedule", "scheduling",
+                "shift", "flexible hours", "flexible working", "flexible work",
+                "work life balance", "working hours", "work from home", "remote",
+                "hybrid", "time off", "leave",
+            ),
+            "recommendation": (
+                "Discuss workload and scheduling preferences with the employee, "
+                "then agree on a sustainable arrangement."
+            ),
+        })
 
-    satisfaction = _number(employee, [
-        "JobSatisfaction", "Job Satisfaction", "EnvironmentSatisfaction",
-        "Environment Satisfaction", "satisfaction",
-    ])
-    if satisfaction is not None and satisfaction <= 2:
-        targeted_signals.update({"satisfaction", "wellbeing", "morale", "check-in", "checkin"})
+    job_satisfaction = _number(employee, ["JobSatisfaction", "Job Satisfaction"])
+    if job_satisfaction is not None and job_satisfaction <= 2:
+        topics.append({
+            "title": "Job satisfaction and recognition",
+            "terms": (
+                "job satisfaction", "recognition", "appreciation", "feedback",
+                "engagement", "morale", "wellbeing", "well being", "check in",
+                "stay interview", "employee voice", "listening",
+            ),
+            "recommendation": (
+                "Hold a confidential stay conversation to learn what is affecting "
+                "job satisfaction and agree on one employee-prioritized action."
+            ),
+        })
 
-    income = _number(employee, ["MonthlyIncome", "Monthly Income", "Salary", "Income"])
-    if income is not None and income <= 3000:
-        targeted_signals.update({"compensation", "salary", "pay", "progression", "raise"})
+    environment_satisfaction = _number(
+        employee,
+        ["EnvironmentSatisfaction", "Environment Satisfaction"],
+    )
+    if environment_satisfaction is not None and environment_satisfaction <= 2:
+        topics.append({
+            "title": "Work environment",
+            "terms": (
+                "work environment", "workplace", "workspace", "equipment",
+                "resources", "safety", "facilities", "tools", "work conditions",
+            ),
+            "recommendation": (
+                "Ask which workplace conditions are affecting the employee and "
+                "follow up on the specific issue they identify."
+            ),
+        })
 
-    tenure = _number(employee, ["YearsAtCompany", "Years At Company", "Tenure", "YearsInCurrentRole"])
+    relationship_satisfaction = _number(
+        employee,
+        ["RelationshipSatisfaction", "Relationship Satisfaction"],
+    )
+    if relationship_satisfaction is not None and relationship_satisfaction <= 2:
+        topics.append({
+            "title": "Workplace relationships",
+            "terms": (
+                "relationship", "manager", "supervisor", "team", "colleague",
+                "relationships", "managers", "teams", "peers", "communication",
+                "conflict", "mediation",
+            ),
+            "recommendation": (
+                "Offer a confidential conversation about workplace relationships "
+                "and discuss appropriate manager or team support."
+            ),
+        })
+
+    tenure = _number(
+        employee,
+        ["YearsAtCompany", "Years At Company", "Tenure", "YearsInCurrentRole"],
+    )
     if tenure is not None and tenure <= 2:
-        targeted_signals.update({"onboarding", "mentor", "mentoring", "growth", "career", "training"})
+        topics.append({
+            "title": "Onboarding and career development",
+            "terms": (
+                "onboarding", "orientation", "mentor", "mentoring", "training",
+                "development", "career", "progression", "growth", "role clarity",
+                "expectations", "coaching", "learning",
+            ),
+            "recommendation": (
+                "Check that role expectations and development goals are clear; "
+                "offer a mentor or training if the employee wants one."
+            ),
+        })
 
-    candidates = []
-    for document in knowledge_documents:
-        sentences = re.split(r"(?<=[.!?])\s+", str(document.get("text", "")))
-        for sentence in sentences:
-            cleaned = sentence.strip(" -\n\t")
-            words = set(re.findall(r"[a-z0-9]+", cleaned.lower()))
-            if len(words) >= 4:
-                specific_overlap = len(words & targeted_signals)
-                generic_overlap = len(words & {"support", "retention", "employee", "hr"})
-                if specific_overlap:
-                    candidates.append((specific_overlap * 3 + generic_overlap, cleaned))
+    compensation_satisfaction = _number(
+        employee,
+        ["SalarySatisfaction", "CompensationSatisfaction", "PaySatisfaction"],
+    )
+    if compensation_satisfaction is not None and compensation_satisfaction <= 2:
+        topics.append({
+            "title": "Compensation and benefits",
+            "terms": (
+                "compensation", "salary", "pay", "benefits", "reward",
+            ),
+            "recommendation": (
+                "Ask whether compensation or benefits are a concern and, if so, "
+                "explain the relevant review process and options."
+            ),
+        })
 
-    if not candidates:
-        return None
+    return topics
 
-    ranked_sentences = []
+
+def select_policy_cards(employee, knowledge_documents, limit=3):
+    """Select distinct HR guidance only when it matches an employee's risk signals."""
+    topics = _active_policy_topics(employee)
+    if not topics or not knowledge_documents:
+        return []
+
+    best_by_topic = {}
+    for document_index, document in enumerate(knowledge_documents):
+        text = re.sub(r"\s+", " ", str(document.get("text", ""))).strip()
+        for sentence_index, sentence in enumerate(re.split(r"(?<=[.!?])\s+", text)):
+            sentence = sentence.strip(" -\n\t")
+            normalized = " " + " ".join(re.findall(r"[a-z0-9]+", sentence.lower())) + " "
+            if len(normalized.split()) < 4:
+                continue
+            for topic_index, topic in enumerate(topics):
+                matched_terms = [
+                    term for term in topic["terms"]
+                    if " " + term + " " in normalized
+                    or " " + term + "s " in normalized
+                ]
+                if not matched_terms:
+                    continue
+                candidate = (
+                    -len(matched_terms),
+                    document_index,
+                    sentence_index,
+                    topic["title"],
+                    sentence,
+                    document.get("source_name", "HR policy"),
+                )
+                current = best_by_topic.get(topic_index)
+                if current is None or candidate[:3] < current[:3]:
+                    best_by_topic[topic_index] = candidate
+
+    candidates = sorted(best_by_topic.values(), key=lambda item: item[:3])
+    cards = []
     seen_sentences = set()
-    for score, sentence in sorted(candidates, key=lambda item: item[0], reverse=True):
-        normalized = sentence.lower()
-        if normalized not in seen_sentences:
-            ranked_sentences.append(sentence)
-            seen_sentences.add(normalized)
-        if len(ranked_sentences) == 3:
+    for _, _, _, title, sentence, source in candidates:
+        normalized_sentence = " ".join(re.findall(r"[a-z0-9]+", sentence.lower()))
+        if normalized_sentence in seen_sentences:
+            continue
+        seen_sentences.add(normalized_sentence)
+        cards.append((title, sentence, source))
+        if len(cards) == limit:
             break
+    return cards
 
-    guidance = " | ".join(ranked_sentences)
+
+def _document_recommendation(employee, knowledge_documents):
+    """Combine applicable actions from employee-matched HR guidance."""
+    cards = select_policy_cards(employee, knowledge_documents, limit=2)
+    if not cards:
+        return None
+    guidance = " | ".join(sentence for _, sentence, _ in cards)
     if len(guidance) > 480:
         guidance = guidance[:477].rsplit(" ", 1)[0] + "..."
     return "Apply the organization HR guidance: " + guidance
@@ -120,62 +231,23 @@ def summarize_recommendation_context(employee, probability, knowledge_documents=
 
 
 def generate_retention_recommendations(employee, probability, knowledge_documents=None, risk_factors=None):
-    """Generate targeted local retention actions for one employee, with optional knowledge context."""
-    knowledge_documents = knowledge_documents or []
-    risk_factors = risk_factors or []
-    recommendations = []
-
-    overtime = _text(employee, ["OverTime", "Overtime", "overtime"])
-    if overtime in {"yes", "true", "1"}:
-        recommendations.append(
-            "Review workload and overtime with the employee; agree on a sustainable schedule."
+    """Compatibility wrapper returning personalized actions as readable strings."""
+    employee_values = employee if isinstance(employee, dict) else employee.to_dict()
+    plan = generate_personalized_retention_plan(
+        employee_values,
+        pd.DataFrame([employee_values]),
+        probability,
+        knowledge_documents=knowledge_documents,
+    )
+    recommendations = [
+        (
+            f"{item['priority']} priority — {item['strategy_title']}: "
+            f"{item['reason']} Recommended action: {item['action']}"
         )
-
-    satisfaction = _number(employee, [
-        "JobSatisfaction", "Job Satisfaction", "EnvironmentSatisfaction",
-        "Environment Satisfaction", "satisfaction",
-    ])
-    if satisfaction is not None and satisfaction <= 2:
-        recommendations.append(
-            "Schedule a confidential check-in to identify the main source of dissatisfaction and create a 30-day improvement plan."
-        )
-
-    income = _number(employee, ["MonthlyIncome", "Monthly Income", "Salary", "Income"])
-    if income is not None and income <= 3000:
-        recommendations.append(
-            "Benchmark compensation and discuss a transparent pay or progression review."
-        )
-
-    tenure = _number(employee, ["YearsAtCompany", "Years At Company", "Tenure", "YearsInCurrentRole"])
-    if tenure is not None and tenure <= 2:
-        recommendations.append(
-            "Assign a mentor and schedule a stay interview focused on onboarding, growth, and role clarity."
-        )
-
-    document_recommendation = _document_recommendation(employee, knowledge_documents)
-
+        for item in plan["recommendations"]
+    ]
     if not recommendations:
-        recommendations.append(
-            "Hold a stay interview, clarify career goals, and agree on one measurable retention action."
-        )
-
-    if probability >= 0.60:
-        recommendations.insert(
-            0,
-            "Prioritize this employee for an HR follow-up within 7 days because the predicted attrition risk is high.",
-        )
-    elif probability >= 0.30:
-        recommendations.insert(
-            0,
-            "Schedule a manager check-in within 30 days and monitor the risk after the intervention.",
-        )
-
-    if document_recommendation:
-        recommendations.insert(1 if probability >= 0.30 else 0, document_recommendation)
-
+        recommendations.append(plan["insufficient_information"])
     if risk_factors:
-        recommendations.append(
-            "Focus the review on the strongest risk drivers: " + ", ".join(map(str, risk_factors)) + "."
-        )
-
+        recommendations[0] += " Additional review factors: " + ", ".join(map(str, risk_factors)) + "."
     return recommendations
